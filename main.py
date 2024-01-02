@@ -123,7 +123,7 @@ def get_rss_structure(config, token):
 def check_config_existence():
     # Check if the directory exists and contains the file
     if not os.path.exists(CONFIG_FILE):
-        logging.info(f"No config file found in {CONFIG_FILE}")
+        logging.info(f"No config file found: {CONFIG_FILE}")
         exit(1)
         
     else:
