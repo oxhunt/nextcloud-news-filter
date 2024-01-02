@@ -5,6 +5,7 @@ After=snap.nextcloud.apache.service
 
 [Service]
 Type=simple
+ExecStartPre=podman pull docker.io/oxhunt/nextcloud-news-filter
 ExecStart=podman run -v /home/dc/.config/nextcloud-news-filter/config.ini:/config.ini:Z docker.io/oxhunt/nextcloud-news-filter:latest
 
 [Install]

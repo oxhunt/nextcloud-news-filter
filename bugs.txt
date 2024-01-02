@@ -1,7 +1,0 @@
-TODO:
-- instead of using folder ids and feed ids, allow the user to use strings to match the title, case insensitive
-- instead of looking in the working directory for the config, look at the ~/.config/nextcloud-news-filter.Ini
-- create an ansible script to automate the setup
-
-the program should run periodically every 15 min or you need to find a hook in nextcloud news, whichever you prefer, either using sleep or a cronjob
-you also need to handle errors while connecting

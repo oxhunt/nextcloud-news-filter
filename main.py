@@ -19,38 +19,8 @@ NAME_PROGRAM = "nextcloud-news-filter"
 CONFIG_FILE = "/config.ini"
 
 
-def print_info_of_file(f_path):
-    root_dir = "/"
-    file_name = "config.ini"
-    print(f"contents of root dir(/): {os.listdir("/")}")
-    # Check if the file exists in the directory
-    if os.path.isfile(os.path.join(root_dir, file_name)):
-        # Open the file and print its contents
-        with open(os.path.join(root_dir, file_name), "r") as f:
-            print(f.read())
-    else:
-        print(f"The file {file_name} does not exist in the directory {root_dir}.")
 
-#    # Check if the path exists
-#    if os.path.exists(f_path):
-#        # Print the absolute path
-#        print(f"Absolute path: {os.path.abspath(f_path)}")
-#        # Check if the path is a file or a folder
-#        if os.path.isfile(f_path):
-#            # Print the file size in bytes
-#            print(f"File size: {os.path.getsize(f_path)} bytes")
-#            # Print the file modification time
-#            print(f"Last modified: {os.path.getmtime(f_path)}")
-#        elif os.path.isdir(f_path):
-#            # Print the number of files and folders in the directory
-#            print(f"Number of files and folders: {len(os.listdir(f_path))}")
-#            # Print the names of the files and folders in the directory
-#            print("Files and folders:")
-#            for name in os.listdir(f_path):
-#                print(name)
-#    else:
-#        # Print an error message if the path does not exist
-#        print(f"Invalid path: {f_path}")
+
 
 
 def get_matching_item_ids(items, one_filter):
@@ -84,11 +54,10 @@ def check_config_existence():
     # Check if the directory exists and contains the file
     if not os.path.isfile(CONFIG_FILE):
         logging.info(f"No config file found: {CONFIG_FILE}")
-        print_info_of_file(CONFIG_FILE)
         exit(1)
         
     else:
-        print(f"File {CONFIG_FILE} already exists")
+        print(f"File {CONFIG_FILE} found")
 
 def parse_config():
     if not os.path.isfile(CONFIG_FILE):
@@ -118,12 +87,87 @@ def print_unread_rss_structure(rss_structure):
                 for it in rss_structure["items"]:
                     if it["feedId"]==fd["id"]:
                         logging.debug(f"        - {it['title']}")
+
+def get_folder_ids_matching_name(name_match, rss_structure):
+    '''return all folder ids in the given structure which contain the name_match in their name'''
+    matching_ids=[]
+    for f in rss_structure["folders"]:
+        if name_match.lower() in f["name"].lower():
+            matching_ids.append(f["id"])
+    return matching_ids
+
+def get_feed_ids_matching_name(name_match, rss_structure):
+    '''return all feed ids in the given structure which contain the name_match in their title'''
+    matching_ids=[]
+    for f in rss_structure["feeds"]:
+        if (name_match).lower() in f["title"].lower():
+            matching_ids.append(f["id"])
+    return matching_ids
+
+def is_supported_filter(f):
+    if f["folderNameContains"] and f["folderId"]:
+        logging.warning(f"Unsupported filter detected, you cannot filter both by folderid and foldername, ignoring: {f}")
+        return False
+    if f["feedNameContains"] and f["feedId"]:
+        logging.warning(f"Unsupported filter detected, you cannot filter both by feedid and feedtitle, ignoring: {f}")
+        return False
+    return True
+
+def clean_filters(filters, rss_structure):
+    ''' takes the filters as inputs and converts folderNameContains and feedNameContains to the appropriate feedIds and folderIds'''
+    new_filters = []
+    
+    # lets remove the filter types we do not support
+    supported_filters = list(filter(lambda f: is_supported_filter(f), filters))
+    
+    # normal filters are the ones that do not use neither the  "folderNameContains" or "feedNameContains"
+    normal_filters = list(filter(lambda f: not(f["folderNameContains"] or f["feedNameContains"]), supported_filters))
+    
+    # folder name filters are the ones using "folderNameContains" to filter
+    folder_name_filters = list(filter(lambda f: f["folderNameContains"], supported_filters))
+    
+    # feed name filters are the ones using "feedrNameContains" to filter
+    feed_name_filters = list(filter(lambda f: f["feedNameContains"], supported_filters))
+    
+    # creating new filters depending on the number of matched folders of feedNameContains and folderNameContains
+    new_filters = []
+    for f in folder_name_filters:
+        matching_ids = get_folder_ids_matching_name(f["folderNameContains"], rss_structure)
+        for m in matching_ids:
+            f["folderId"]=m
+            new_filters.append(f)
+    for f in feed_name_filters:
+        matching_ids = get_feed_ids_matching_name(f["feedNameContains"], rss_structure)
+        for m in matching_ids:
+            f["feedId"]=m
+            new_filters.append(f)
+    
+    for f in supported_filters:
+        if f["folderNameContains"]:
+            if not f["folderId"]:
+                matching_ids = get_folder_ids_matching_name(f["folderNameContains"], rss_structure)
+                for id in matching_ids:
+                    f["folderId"]=id
+                    new_filters.append(f)
+        elif f["feedNameContains"]:
+            if not f["feedId"]:
+                matching_ids = get_feed_ids_matching_name(f["feedNameContains"], rss_structure)
+                for id in matching_ids:
+                    f["feedId"]=id
+                    new_filters.append(f)
+                            
+        else:
+            new_filters.append(f)
+    return new_filters
+    
 def parse_filters(config):
     filters = []
     for section in config:
         if section not in ['DEFAULT', 'login']:
             
             one_filter = {'name': section,
+                          'folderNameContains': config[section]['folderNameContains'] if 'folderNameContains' in config[section] else None,
+                          'feedNameContains': config[section]['feedNameContains'] if 'feedNameContains' in config[section] else None,
                           'folderId': int(config[section]['folderId']) if 'folderId' in config[section] else None,
                           'feedId': int(config[section]['feedId']) if 'feedId' in config[section] else None,
                           'titleRegex': re.compile(config[section]['titleRegex'], re.IGNORECASE) if 'titleRegex' in config[section] else None,
@@ -180,19 +224,21 @@ if __name__ == '__main__':
         
         token = base64.encodebytes((config['login']['username'] + ':' + config['login']['password'])
                                 .encode(encoding='UTF-8')).decode(encoding='UTF-8').strip()
-        filters = parse_filters(config)
+        
         
         rss_structure = get_rss_structure(config, token)
         
         # removing all feeds that are have already been marked as read
         rss_structure["items"] = list(filter(lambda i: i['unread'], rss_structure['items']))
 
+        filters = clean_filters(parse_filters(config), rss_structure)
+        
         for i in rss_structure["items"]:
             assert i['unread']==True
         #print(rss_structure["items"])
 
         # printing the folder, feed tree
-        print_unread_rss_structure(rss_structure)
+        # print_unread_rss_structure(rss_structure)
 
         add_folder_id_to_items(rss_structure)
         # goes through the filters and collect the ids of the items to hide
@@ -240,6 +286,6 @@ if __name__ == '__main__':
                         headers=dict(Authorization=f"Basic {token}"),
                         json=dict(itemIds=values_to_set_as_read))
         
-        logging.debug('rerunning')
+        logging.debug('rerunning in 30 minutes')
         time.sleep(30*60) # repeat every 30 minutes
-        logging.debug('finished sleep')
+        logging.debug('finished sleep, starting to run')
