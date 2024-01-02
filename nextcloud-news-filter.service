@@ -1,0 +1,11 @@
+#/etc/systemd/system/nextcloud-news-filter.service
+[Unit]
+Description=Nextcloud news filter service
+After=snap.nextcloud.apache.service
+
+[Service]
+Type=simple
+ExecStart=podman run -v /home/dc/.config/nextcloud-news-filter/config.ini:/config.ini:Z docker.io/oxhunt/nextcloud-news-filter:latest
+
+[Install]
+WantedBy=multi-user.target

@@ -11,11 +11,47 @@ import re
 from _datetime import datetime, timedelta
 import requests
 import os
-import shutil
+import time
+
 
 NAME_PROGRAM = "nextcloud-news-filter"
 # CONFIG_FILE = os.path.expanduser(f"~/.config/{NAME_PROGRAM}/config.ini")
-CONFIG_FILE = os.path.expanduser(f"/config.ini")
+CONFIG_FILE = "/config.ini"
+
+
+def print_info_of_file(f_path):
+    root_dir = "/"
+    file_name = "config.ini"
+    print(f"contents of root dir(/): {os.listdir("/")}")
+    # Check if the file exists in the directory
+    if os.path.isfile(os.path.join(root_dir, file_name)):
+        # Open the file and print its contents
+        with open(os.path.join(root_dir, file_name), "r") as f:
+            print(f.read())
+    else:
+        print(f"The file {file_name} does not exist in the directory {root_dir}.")
+
+#    # Check if the path exists
+#    if os.path.exists(f_path):
+#        # Print the absolute path
+#        print(f"Absolute path: {os.path.abspath(f_path)}")
+#        # Check if the path is a file or a folder
+#        if os.path.isfile(f_path):
+#            # Print the file size in bytes
+#            print(f"File size: {os.path.getsize(f_path)} bytes")
+#            # Print the file modification time
+#            print(f"Last modified: {os.path.getmtime(f_path)}")
+#        elif os.path.isdir(f_path):
+#            # Print the number of files and folders in the directory
+#            print(f"Number of files and folders: {len(os.listdir(f_path))}")
+#            # Print the names of the files and folders in the directory
+#            print("Files and folders:")
+#            for name in os.listdir(f_path):
+#                print(name)
+#    else:
+#        # Print an error message if the path does not exist
+#        print(f"Invalid path: {f_path}")
+
 
 def get_matching_item_ids(items, one_filter):
     matching_ids = set()
@@ -44,6 +80,15 @@ def is_match(one_filter, t_item):
                 or t_item['pubDate'] < one_filter['minPubDate']):
         return True
     return False
+def check_config_existence():
+    # Check if the directory exists and contains the file
+    if not os.path.isfile(CONFIG_FILE):
+        logging.info(f"No config file found: {CONFIG_FILE}")
+        print_info_of_file(CONFIG_FILE)
+        exit(1)
+        
+    else:
+        print(f"File {CONFIG_FILE} already exists")
 
 def parse_config():
     if not os.path.isfile(CONFIG_FILE):
@@ -120,14 +165,7 @@ def get_rss_structure(config, token):
             exit(1)
     return rss_structure
 
-def check_config_existence():
-    # Check if the directory exists and contains the file
-    if not os.path.exists(CONFIG_FILE):
-        logging.info(f"No config file found: {CONFIG_FILE}")
-        exit(1)
-        
-    else:
-        print(f"File {CONFIG_FILE} already exists")
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG,
@@ -135,71 +173,73 @@ if __name__ == '__main__':
                         stream=sys.stdout)
     logging.debug('starting run')
 
+    while True:
+        check_config_existence()
 
-    check_config_existence()
+        config = parse_config()
+        
+        token = base64.encodebytes((config['login']['username'] + ':' + config['login']['password'])
+                                .encode(encoding='UTF-8')).decode(encoding='UTF-8').strip()
+        filters = parse_filters(config)
+        
+        rss_structure = get_rss_structure(config, token)
+        
+        # removing all feeds that are have already been marked as read
+        rss_structure["items"] = list(filter(lambda i: i['unread'], rss_structure['items']))
 
-    config = parse_config()
-    
-    token = base64.encodebytes((config['login']['username'] + ':' + config['login']['password'])
-                               .encode(encoding='UTF-8')).decode(encoding='UTF-8').strip()
-    filters = parse_filters(config)
-    
-    rss_structure = get_rss_structure(config, token)
-    
-    # removing all feeds that are have already been marked as read
-    rss_structure["items"] = list(filter(lambda i: i['unread'], rss_structure['items']))
+        for i in rss_structure["items"]:
+            assert i['unread']==True
+        #print(rss_structure["items"])
 
-    for i in rss_structure["items"]:
-        assert i['unread']==True
-    #print(rss_structure["items"])
+        # printing the folder, feed tree
+        print_unread_rss_structure(rss_structure)
 
-    # printing the folder, feed tree
-    print_unread_rss_structure(rss_structure)
-
-    add_folder_id_to_items(rss_structure)
-    # goes through the filters and collect the ids of the items to hide
-    results = {
-        "blacklist":{"matched":set(), "not_matched":set()},
-        "whitelist": {"matched":set(), "not_matched":set()}
-    }
-    for f in filters:
-        match_by_feedId = {'name': "", "feedId": f["feedId"], "folderId":f["folderId"]}
-        f["matched_items"] = get_matching_item_ids(rss_structure["items"], f)
-        f["considered_items"] = get_matching_item_ids(rss_structure["items"], match_by_feedId )
-        f["not_matched"] = f["considered_items"]-f["matched_items"]
-    
-    # transforming all the blacklist filter results to whitelist mode
-    def translate_blacklist_filter(f):
-        if not f["isWhitelist"]:
-            # import copy
-            # m = copy.deepcopy(f["matched_items"])
-            nm=f["not_matched"]
-            m=f["matched_items"]
-            f["not_matched"]=m
-            f["matched_items"]=nm
-        return f
-    filters = list(map(lambda f: translate_blacklist_filter(f), filters))
-    
-    # we now have only results expressed as whitelists
-    # between filters with same priority, the resulting set is the intersection of the sets  
-    
-    all_unread_item_ids = set(map(lambda i: i["id"], rss_structure["items"]))
-    
-    # we calculate, for each item, if there is at least a filter regarding it which deemed it as unworthy
-    values_to_set_as_read = []
-    for id in all_unread_item_ids:
-        mark_as_read = False
+        add_folder_id_to_items(rss_structure)
+        # goes through the filters and collect the ids of the items to hide
+        results = {
+            "blacklist":{"matched":set(), "not_matched":set()},
+            "whitelist": {"matched":set(), "not_matched":set()}
+        }
         for f in filters:
-            if id in f["considered_items"]:
-                if id in f["not_matched"]:
-                    values_to_set_as_read.append(id)
-                    break
-                    
-    
-    if values_to_set_as_read:
-        logging.log(logging.INFO, f"marking as read: {len(values_to_set_as_read)} items")
-        requests.post(url=config['login']['address'] + '/index.php/apps/news/api/v1-3/items/read/multiple',
-                      headers=dict(Authorization=f"Basic {token}"),
-                      json=dict(itemIds=values_to_set_as_read))
-
-    logging.debug('finished run')
+            match_by_feedId = {'name': "", "feedId": f["feedId"], "folderId":f["folderId"]}
+            f["matched_items"] = get_matching_item_ids(rss_structure["items"], f)
+            f["considered_items"] = get_matching_item_ids(rss_structure["items"], match_by_feedId )
+            f["not_matched"] = f["considered_items"]-f["matched_items"]
+        
+        # transforming all the blacklist filter results to whitelist mode
+        def translate_blacklist_filter(f):
+            if not f["isWhitelist"]:
+                # import copy
+                # m = copy.deepcopy(f["matched_items"])
+                nm=f["not_matched"]
+                m=f["matched_items"]
+                f["not_matched"]=m
+                f["matched_items"]=nm
+            return f
+        filters = list(map(lambda f: translate_blacklist_filter(f), filters))
+        
+        # we now have only results expressed as whitelists
+        # between filters with same priority, the resulting set is the intersection of the sets  
+        
+        all_unread_item_ids = set(map(lambda i: i["id"], rss_structure["items"]))
+        
+        # we calculate, for each item, if there is at least a filter regarding it which deemed it as unworthy
+        values_to_set_as_read = []
+        for id in all_unread_item_ids:
+            mark_as_read = False
+            for f in filters:
+                if id in f["considered_items"]:
+                    if id in f["not_matched"]:
+                        values_to_set_as_read.append(id)
+                        break
+                        
+        
+        if values_to_set_as_read:
+            logging.log(logging.INFO, f"marking as read: {len(values_to_set_as_read)} items")
+            requests.post(url=config['login']['address'] + '/index.php/apps/news/api/v1-3/items/read/multiple',
+                        headers=dict(Authorization=f"Basic {token}"),
+                        json=dict(itemIds=values_to_set_as_read))
+        
+        logging.debug('rerunning')
+        time.sleep(30*60) # repeat every 30 minutes
+        logging.debug('finished sleep')
