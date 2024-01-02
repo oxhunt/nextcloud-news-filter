@@ -121,19 +121,10 @@ def get_rss_structure(config, token):
     return rss_structure
 
 def check_config_existence():
-    # Define the source and destination paths
-    src = os.getcwd() + "/sample-config.ini"
-
     # Check if the directory exists and contains the file
     if not os.path.exists(CONFIG_FILE):
-
-        logging.info(f"No config file found in {CONFIG_FILE}, creating it anew, but please remember to adjust it")
-        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
-        shutil.copy(src, CONFIG_FILE)
-        print(f"File {src} copied to {CONFIG_FILE}")
-        if not os.path.exists(CONFIG_FILE):
-            logging.error(f"{CONFIG_FILE} not found")
-            exit(1)
+        logging.info(f"No config file found in {CONFIG_FILE}")
+        exit(1)
         
     else:
         print(f"File {CONFIG_FILE} already exists")
