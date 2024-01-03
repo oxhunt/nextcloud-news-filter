@@ -214,7 +214,10 @@ if __name__ == '__main__':
         # removing all feeds that are have already been marked as read
         rss_structure["items"] = list(filter(lambda i: i['unread'], rss_structure['items']))
 
-        filters = clean_filters(parse_filters(config), rss_structure)
+        
+        filters = parse_filters(config)
+        # clean_filters is buggy, so I avoid using it
+        # filters = clean_filters(parse_filters(config), rss_structure)
         
         for i in rss_structure["items"]:
             assert i['unread']==True
