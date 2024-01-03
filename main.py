@@ -129,36 +129,19 @@ def clean_filters(filters, rss_structure):
     # feed name filters are the ones using "feedrNameContains" to filter
     feed_name_filters = list(filter(lambda f: f["feedNameContains"], supported_filters))
     
-    # creating new filters depending on the number of matched folders of feedNameContains and folderNameContains
-    new_filters = []
+    # creating new new normal filters depending on the number of matched folders/feeds using feedNameContains/folderNameContains
+    normal_filters = []
     for f in folder_name_filters:
         matching_ids = get_folder_ids_matching_name(f["folderNameContains"], rss_structure)
         for m in matching_ids:
             f["folderId"]=m
-            new_filters.append(f)
+            normal_filters.append(f)
     for f in feed_name_filters:
         matching_ids = get_feed_ids_matching_name(f["feedNameContains"], rss_structure)
         for m in matching_ids:
             f["feedId"]=m
-            new_filters.append(f)
-    
-    for f in supported_filters:
-        if f["folderNameContains"]:
-            if not f["folderId"]:
-                matching_ids = get_folder_ids_matching_name(f["folderNameContains"], rss_structure)
-                for id in matching_ids:
-                    f["folderId"]=id
-                    new_filters.append(f)
-        elif f["feedNameContains"]:
-            if not f["feedId"]:
-                matching_ids = get_feed_ids_matching_name(f["feedNameContains"], rss_structure)
-                for id in matching_ids:
-                    f["feedId"]=id
-                    new_filters.append(f)
-                            
-        else:
-            new_filters.append(f)
-    return new_filters
+            normal_filters.append(f)
+    return normal_filters 
     
 def parse_filters(config):
     filters = []
